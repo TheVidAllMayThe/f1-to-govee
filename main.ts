@@ -102,7 +102,7 @@ async function getDrivers() {
   return data;
 }
 
-async function main() {
+async function updatePositions() {
   const positions = await getLatestPositions();
 
   // get latest position date
@@ -110,7 +110,7 @@ async function main() {
 
   // if latest position date is older than 2 hours exit
   if (latestPositionDate.getTime() < Date.now() - 2 * 60 * 60 * 1000) {
-    console.log("Latest position is older than 2 hours, exiting");
+    console.log("Latest position is older than 2 hours, skipping update");
     return;
   }
 
@@ -145,4 +145,4 @@ async function main() {
   }
 }
 
-main();
+Deno.cron("Update F1 Positions", "*/2 * * * *", updatePositions);
