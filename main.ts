@@ -145,4 +145,4 @@ async function updatePositions() {
   }
 }
 
-Deno.cron("Update F1 Positions", "*/2 * * * *", updatePositions);
+Deno.cron("Update F1 Positions", "*/2 * * * 5-7", updatePositions);
