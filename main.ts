@@ -24,10 +24,16 @@ type Driver = {
   team_name: string;
 };
 
+const MISSING_COLORS = {
+  LAW: "#6692FF",
+  COL: "#64C4FF",
+  BEA: "#B6BABD",
+} as const;
+
 function hexToIntColor(hex: string): number {
   // Ensure hex is in the correct format
   if (!/^#?[0-9A-Fa-f]{6}$/.test(hex)) {
-    throw new Error("Invalid hex color format");
+    throw new Error(`Invalid hex color format, ${hex}`);
   }
 
   // Remove the leading '#' if present
@@ -38,11 +44,12 @@ function hexToIntColor(hex: string): number {
 }
 
 async function setHexColor(segments: number[], color: number) {
+  console.log(`Setting color for segments: ${segments} to ${color}`);
   const requestBody = {
     requestId: "1",
     payload: {
       sku: "H6061",
-      device: "EC:5F:CF:38:32:31:49:04",
+      device: Deno.env.get("GOVEE_DEVICE_ID"),
       capability: {
         type: "devices.capabilities.segment_color_setting",
         instance: "segmentedColorRgb",
@@ -81,7 +88,12 @@ async function setHexColor(segments: number[], color: number) {
     throw new Error(`Error calling Govee API: ${data.message}`);
   }
 
+  console.log(`Successfully set color for segments: ${segments} to ${color}`);
   return data;
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function getLatestPositions() {
@@ -116,33 +128,37 @@ async function updatePositions() {
 
   const drivers = await getDrivers();
 
-  const top10Drivers = sortBy(
-    positions.map((position) => {
-      const driver = drivers.find((d) =>
-        d.driver_number === position.driver_number
-      );
+  const colorsToChange = positions
+    .filter((p) => p.position <= 10)
+    .reduce((acc, p) => {
+      const driver = drivers.find((d) => d.driver_number === p.driver_number);
 
       if (!driver) {
         throw new Error(
-          `Driver not found for driver number: ${position.driver_number}`,
+          `Driver not found for driver number: ${p.driver_number}`,
         );
       }
 
-      return {
-        ...position,
-        driver,
-      };
-    }),
-    (d) => d.position,
-    { order: "desc" },
-  ).splice(-10);
+      const color = driver.team_colour ??
+        MISSING_COLORS[driver.name_acronym as keyof typeof MISSING_COLORS];
 
-  for (const driverPosition of top10Drivers) {
-    const color = hexToIntColor(driverPosition.driver.team_colour);
-    await setHexColor([10 - driverPosition.position], color);
+      return {
+        ...acc,
+        [color]: [
+          ...(acc[driver.team_colour] || []),
+          10 - p.position,
+        ],
+      };
+    }, {} as Record<string, number[]>);
+
+  for (const [teamColour, positions] of Object.entries(colorsToChange)) {
+    const color = hexToIntColor(teamColour);
+    await setHexColor(positions, color);
     // wait 1 second since the goovee api sometimes freaks out if we call it too fast
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await sleep(500);
   }
 }
 
-Deno.cron("Update F1 Positions", "*/2 * * * 5-7", updatePositions);
+Deno.cron("Update F1 Positions", "* * * * 5-7", updatePositions);
+
+// await updatePositions();
